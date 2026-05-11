@@ -4,25 +4,46 @@ namespace App\Http\Controllers\api;
 
 use App\Http\Controllers\Controller;
 use App\Mail\AdminPasswordResetMail;
+use App\Models\AdminMailSetting;
 use App\Models\User;
+use App\Services\AdminTransactionalMailService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 class AdminPasswordResetController extends Controller
 {
-    private const RESET_EXPIRY_MINUTES = 15;
+    /** Enough time to open inbox and complete reset without DNS flakiness on validation. */
+    private const RESET_EXPIRY_MINUTES = 60;
+
     private const GENERIC_FORGOT_RESPONSE = 'If an account exists for this email, a password reset link has been sent.';
+
+    /** @var AdminTransactionalMailService */
+    private $adminTransactionalMail;
+
+    public function __construct(AdminTransactionalMailService $adminTransactionalMail)
+    {
+        $this->adminTransactionalMail = $adminTransactionalMail;
+    }
+
+    private function footerSupportEmail(): string
+    {
+        $row = AdminMailSetting::first();
+        if ($row && !empty($row->from_email)) {
+            return $row->from_email;
+        }
+
+        return (string) config('mail.from.address', 'hello@example.com');
+    }
 
     public function forgotPassword(Request $request)
     {
         $validated = $request->validate([
-            'email' => 'required|email:rfc,dns|max:255',
+            'email' => 'required|email:filter|max:255',
         ]);
 
         $email = Str::lower(trim($validated['email']));
@@ -59,10 +80,14 @@ class AdminPasswordResetController extends Controller
                     'name' => $user->name ?: 'Admin',
                     'expires_in_minutes' => self::RESET_EXPIRY_MINUTES,
                     'reset_url' => $this->buildResetUrl($plainToken, $user->email),
-                    'support_email' => config('mail.from.address'),
+                    'support_email' => $this->footerSupportEmail(),
                 ];
 
-                Mail::to($user->email)->send(new AdminPasswordResetMail($payload));
+                $this->adminTransactionalMail->sendPasswordReset(
+                    $user->email,
+                    AdminPasswordResetMail::SUBJECT_LINE,
+                    $payload
+                );
             } catch (\Throwable $exception) {
                 Log::warning('Admin password reset email failed.', [
                     'user_id' => $user->id,
@@ -81,7 +106,7 @@ class AdminPasswordResetController extends Controller
     public function resetPassword(Request $request)
     {
         $validated = $request->validate([
-            'email' => 'required|email:rfc,dns|max:255',
+            'email' => 'required|email:filter|max:255',
             'token' => 'required|string|min:40|max:255',
             'password' => [
                 'required',

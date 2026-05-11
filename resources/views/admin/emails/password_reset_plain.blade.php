@@ -1,12 +1,15 @@
-Honest Art Admin Security
+HONEST ART — ADMIN PASSWORD RESET
+=================================
 
 Hi {{ $details['name'] }},
 
 We received a request to reset your admin account password.
-Use this link to continue:
+
+Open this link (valid {{ $details['expires_in_minutes'] }} minutes, one-time use):
 {{ $details['reset_url'] }}
 
-This link expires in {{ $details['expires_in_minutes'] }} minutes and can only be used once.
+If you did not request this, ignore this email. Your password will stay the same.
 
-If you did not request this reset, you can ignore this email.
-Need help? Contact us at {{ $details['support_email'] }}.
+Support: {{ $details['support_email'] }}
+
+© {{ date('Y') }} Honest Art
