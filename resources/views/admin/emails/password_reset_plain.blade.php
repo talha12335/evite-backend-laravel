@@ -1,15 +1,22 @@
-HONEST ART — ADMIN PASSWORD RESET
-=================================
+--------------------------------------------------------------------------------
+  HONEST ART — ADMIN PASSWORD RESET
+--------------------------------------------------------------------------------
 
-Hi {{ $details['name'] }},
+Hello {{ $details['name'] }},
 
-We received a request to reset your admin account password.
+We received a request to reset the password for your admin account.
 
-Open this link (valid {{ $details['expires_in_minutes'] }} minutes, one-time use):
+RESET LINK (one-time use, expires in {{ $details['expires_in_minutes'] }} minutes):
 {{ $details['reset_url'] }}
 
-If you did not request this, ignore this email. Your password will stay the same.
+Security reminders:
+• Use this link only if you requested a password reset.
+• If you did not request this, ignore this email — your password stays unchanged.
+• Never share this link with anyone.
 
-Support: {{ $details['support_email'] }}
+Support:
+{{ $details['support_email'] }}
 
-© {{ date('Y') }} Honest Art
+--------------------------------------------------------------------------------
+© {{ date('Y') }} Honest Art · Automated message · Do not reply with passwords
+--------------------------------------------------------------------------------

@@ -165,7 +165,8 @@ class InvitationController extends Controller
             $invitation->image = $input['image'];
 
             $invitation->save();
-            $invitation->image = $imageUrl;
+            $storedFile = $invitation->image;
+            $invitation->image = $storedFile ? url('uploads/' . $storedFile) : null;
             $invitation->location_details = Location::find($invitation->location_id);
 
             DB::commit();

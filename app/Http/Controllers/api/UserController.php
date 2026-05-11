@@ -43,7 +43,7 @@ class UserController extends Controller
     public function store(Request $request)
     {
         $validate = Validator::make($request->all(), [
-            'email' => 'required',
+            'email' => 'required|string|email',
         ]);
         if ($validate->fails()) {
             return response()->json($validate->errors(), 400);

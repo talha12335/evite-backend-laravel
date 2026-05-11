@@ -71,8 +71,9 @@ class TemplateController extends Controller
                     // Create the base64 image URL
                     $templates->image_baseUrl = 'data:' . $mimeType . ';base64,' . $base64;
                 } else {
-                    echo "File does not exist.";
-                }            }
+                    $templates->image_baseUrl = null;
+                }
+            }
 
             $response = [
                 'message' => count($template) . ' Template Found',

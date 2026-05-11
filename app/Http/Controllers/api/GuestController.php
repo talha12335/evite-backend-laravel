@@ -3,16 +3,16 @@
 namespace App\Http\Controllers\api;
 
 use App\Http\Controllers\Controller;
-use App\Mail\TestMail;
+use App\Models\AdminMailSetting;
 use App\Models\Guest;
-use Exception;
 use App\Models\Invitation;
+use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Http;
-
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\View;
 
 class GuestController extends Controller
 {
@@ -44,29 +44,28 @@ class GuestController extends Controller
         ]);
 
         if ($validate->fails()) {
-            return response()->json($validate->errors(), 200);
+            return response()->json([
+                'message' => 'Validation failed',
+                'status' => 0,
+                'errors' => $validate->errors(),
+            ], 422);
         }
 
-        DB::beginTransaction();
         try {
+            DB::beginTransaction();
             $validatedData = $validate->validated();
-            $guest = Guest::where('invitation_id', $request->id)->exists();
-            if ($guest) {
-                // If guest exists, update their email
+            if (Guest::where('invitation_id', $request->id)->exists()) {
                 $guest = Guest::where('invitation_id', $request->id)->first();
                 $guest->guestEmail = json_encode($validatedData['guestEmail']);
                 $guest->save();
             } else {
-                //Else Add Email
                 $guest = new Guest();
                 $guest->guestEmail = json_encode($validatedData['guestEmail']);
                 $guest->invitation_id = $request->id;
                 $guest->save();
             }
 
-
-            //fetch guest data:
-            $guest = Guest::select("guestEmail")
+            $guest = Guest::select('guestEmail')
                 ->where('invitation_id', $request->id)
                 ->first();
 
@@ -74,84 +73,160 @@ class GuestController extends Controller
                 throw new Exception('Guest not found');
             }
 
-            // fetch images from invitation
-            $invitation = Invitation::select("image")
+            $invitationRow = Invitation::select('image', 'honoree_name')
                 ->where('id', $request->id)
                 ->first();
 
-            if (!$invitation) {
+            if (!$invitationRow) {
                 throw new Exception('Invitation not found');
             }
 
-            $invitation->image = url('uploads/' . $invitation->image);
+            if (empty($invitationRow->image)) {
+                throw new Exception('Invitation has no image yet; save your invite before emailing guests.');
+            }
 
-            $guest_emails = json_decode($guest->guestEmail);
+            $invitationImageUrl = url('uploads/' . $invitationRow->image);
+
+            $guest_emails = json_decode($guest->guestEmail, true);
+            if (!is_array($guest_emails)) {
+                throw new Exception('Invalid guest email data');
+            }
 
             DB::commit();
-
-            // hit api for email sending using brevo
-            $brevoApiKey = env('BREVO_API_KEY');
-            $brevoFromName = env('BREVO_FROM_NAME', 'Honest Art');
-            $brevoFromEmail = env('BREVO_FROM_EMAIL', 'hello@honestart.com');
-
-            if (!$brevoApiKey) {
-                throw new Exception('BREVO_API_KEY is not configured');
-            }
-
-            $ch = curl_init();
-
-            curl_setopt($ch, CURLOPT_URL, "https://api.brevo.com/v3/smtp/email");
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-            curl_setopt($ch, CURLOPT_POST, 1);
-
-            $headers = array();
-            $headers[] = "accept: application/json";
-            $headers[] = "api-key: " . $brevoApiKey;
-            $headers[] = "content-type: application/json";
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
-            $recipients = [];
-            foreach ($guest_emails as $email) {
-                $recipients[] = ['email' => $email, 'name' => 'Receiver Name'];
-            }
-
-            $data = array(
-                "sender" => array(
-                    "name" => $brevoFromName,
-                    "email" => $brevoFromEmail
-                ),
-                "to" => $recipients,
-                "subject" => "You're Invited!",
-                "htmlContent" => "<html><head></head><body><img src='$invitation->image' alt='image'></body></html>"
-            );
-
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-
-            $response = curl_exec($ch);
-            if (curl_errno($ch)) {
-                echo 'Error:' . curl_error($ch);
-            }
-
-            curl_close($ch);
-
-            $response = [
-                'message' => 'Guest Added Successfully, Email Sent',
-                'status' => 1,
-                'guest_data' => $guest
-            ];
-            $response_code = 200;
-
         } catch (Exception $e) {
             DB::rollBack();
-            $response = [
-                'message' => 'Internal Server Error',
+            return response()->json([
+                'message' => 'Could not save guest list',
                 'status' => 0,
-                'error_message' => $e->getMessage()
-            ];
-            $response_code = 500;
+                'error_message' => $e->getMessage(),
+            ], 500);
         }
 
-        return response()->json($response, $response_code);
+        $mailer = $this->resolveGuestInvitationSendGrid();
+        if (!$mailer) {
+            return response()->json([
+                'message' => 'Email is not configured on the server',
+                'status' => 0,
+                'error_message' => 'Configure SendGrid in Admin → Mail settings, or set SENDGRID_API_KEY and MAIL_FROM_ADDRESS in .env.',
+            ], 503);
+        }
+
+        $introLine = 'Here is your invitation from Honest Art.';
+        if (is_string($invitationRow->honoree_name) && $invitationRow->honoree_name !== '') {
+            $decoded = json_decode($invitationRow->honoree_name, true);
+            if (is_array($decoded) && !empty($decoded['text'])) {
+                $introLine = 'Join us in celebrating ' . strip_tags($decoded['text']) . '!';
+            }
+        }
+
+        try {
+            $htmlContent = View::make('emails.guest_invitation', [
+                'imageUrl' => $invitationImageUrl,
+                'introLine' => $introLine,
+            ])->render();
+
+            $plainContent = trim(html_entity_decode(strip_tags(preg_replace('/<br\s*\/?>/i', "\n", $htmlContent))));
+
+            $toList = [];
+            foreach ($guest_emails as $email) {
+                $toList[] = ['email' => $email];
+            }
+
+            $subject = "You're invited — Honest Art";
+
+            $sendGridResponse = Http::withToken($mailer['api_key'])
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->timeout(30)
+                ->post('https://api.sendgrid.com/v3/mail/send', [
+                    'personalizations' => [[
+                        'to' => $toList,
+                    ]],
+                    'from' => [
+                        'email' => $mailer['from_email'],
+                        'name' => $mailer['from_name'],
+                    ],
+                    'subject' => $subject,
+                    'content' => [
+                        ['type' => 'text/plain', 'value' => $plainContent !== '' ? $plainContent : $introLine],
+                        ['type' => 'text/html', 'value' => $htmlContent],
+                    ],
+                ]);
+
+            if (!$sendGridResponse->successful()) {
+                $body = $sendGridResponse->body();
+                $decodedErr = json_decode($body, true);
+                $msg = $body;
+                if (is_array($decodedErr)) {
+                    if (!empty($decodedErr['errors'][0]['message'])) {
+                        $msg = $decodedErr['errors'][0]['message'];
+                    } elseif (!empty($decodedErr['message'])) {
+                        $msg = is_string($decodedErr['message']) ? $decodedErr['message'] : json_encode($decodedErr['message']);
+                    }
+                }
+                throw new Exception('SendGrid HTTP ' . $sendGridResponse->status() . ': ' . $msg);
+            }
+
+            return response()->json([
+                'message' => 'Guest list saved and invitation email sent',
+                'status' => 1,
+                'guest_data' => $guest,
+            ], 200);
+        } catch (Exception $e) {
+            return response()->json([
+                'message' => 'Guest list was saved but the email could not be sent',
+                'status' => 0,
+                'error_message' => $e->getMessage(),
+            ], 502);
+        }
+    }
+
+    /**
+     * Decrypt Laravel-encrypted secrets stored in admin_mail_settings.
+     */
+    private function decryptMailSecret(?string $value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+        try {
+            return Crypt::decryptString($value);
+        } catch (\Throwable $e) {
+            return $value;
+        }
+    }
+
+    /**
+     * SendGrid for guest invites: prefer Admin → Mail (SendGrid API), else .env SENDGRID_API_KEY + MAIL_FROM_*.
+     *
+     * @return array{api_key: string, from_email: string, from_name: string}|null
+     */
+    private function resolveGuestInvitationSendGrid(): ?array
+    {
+        $settings = AdminMailSetting::first();
+        if ($settings && $settings->provider === 'sendgrid_api') {
+            $key = $this->decryptMailSecret($settings->sendgrid_api_key);
+            if ($key && !empty($settings->from_email) && !empty($settings->from_name)) {
+                return [
+                    'api_key' => $key,
+                    'from_email' => $settings->from_email,
+                    'from_name' => $settings->from_name,
+                ];
+            }
+        }
+
+        $key = config('services.sendgrid.api_key');
+        $fromEmail = config('mail.from.address');
+        $fromName = config('mail.from.name') ?: 'Honest Art';
+
+        if ($key && $fromEmail) {
+            return [
+                'api_key' => $key,
+                'from_email' => $fromEmail,
+                'from_name' => $fromName,
+            ];
+        }
+
+        return null;
     }
 
 
