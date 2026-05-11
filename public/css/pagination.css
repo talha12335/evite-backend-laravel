@@ -1,0 +1,18 @@
+svg {
+    display: none;
+}
+
+.pagination {
+    margin-top: 25px;
+}
+
+.pagination li.active .page-link {
+    background-color: #1b4b66;
+    border: none;
+    outline: #1b4b66;
+    color: white;
+}
+
+.pagination .page-link {
+    color: black;
+}

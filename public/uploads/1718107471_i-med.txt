@@ -1,0 +1,122 @@
+function admin_custom_scripts()
+{
+    $current_post_type = get_post_type();
+    if ($current_post_type == 'shop_order') {
+        ?>
+        <style>
+            span.wc-order-item-discount {
+                display: none !important;
+            }
+
+            table.display_meta {
+                display: none;
+            }
+
+        </style>
+        <script>
+            var htmlToAppend = '<?php echo display_coupon_breakdown_table(); ?>';
+            var htmlToAppend2 = '<?php echo display_coupon_breakdown_table(); ?>';
+            jQuery('.label:contains("Coupon(s):")').parent().hide();
+            jQuery('#_wc_points_earned').parent().parent().hide();
+            jQuery('#_wc_points_earned').parent().parent().prev().hide();
+            jQuery('.label:contains("Coupon(s):")').parent().after(htmlToAppend);
+            jQuery('.label:contains("Coupon(s):")').parent().after(htmlToAppend2);
+
+
+        </script>
+
+        <?php
+    }
+}
+
+
+
+
+add_action('wp_footer', 'my_custom_script', 9999);
+
+function my_custom_script() {
+    $check_url = home_url('/checkout');
+
+
+    if (is_checkout()) {
+        ?>
+        <script>
+            document.addEventListener("DOMContentLoaded", function() {
+
+
+                // Function to check and update th elements
+                function checkAndUpdateThElements() {
+                    const existingRow = document.querySelector('tr.cart-subtotal-after-discount');
+                    if (!existingRow) {
+                        const rowElement = document.querySelector('tr');
+
+                        const totalAmountElement = document.querySelector('.cart-subtotal td .woocommerce-Price-amount bdi');
+                        // // console.log(totalAmountElement);
+                        const totalAmount = parseFloat(totalAmountElement.textContent.replace(/[^0-9.-]+/g, ''));
+                        //
+                        console.log("Total",totalAmount);
+                        const existRow = document.querySelector('tr.cart-discount span.woocommerce-Price-amount.amount');
+                        if(existRow){
+                        // // Get the discount amount
+                        const discountAmountElement = document.querySelector('tr.cart-discount span.woocommerce-Price-amount.amount').textContent;
+                        // cosole.log(discountAmountElement)
+                        const discountAmount = parseFloat(discountAmountElement.replace(/[^0-9.-]+/g, ''));
+                        console.log("Total",discountAmount);
+                        //
+                        // // Calculate subtotal after discount
+                        const subtotalAfterDiscount = totalAmount - discountAmount;
+                        console.log(subtotalAfterDiscount)
+
+                        let container = document.getElementsByClassName("shop_table.woocommerce-checkout-review-order-table");
+
+                        const newRow = document.createElement('tr');
+                        newRow.classList.add('cart-subtotal-after-discount');
+                        //
+                        const thElement = document.createElement('th');
+                        thElement.textContent = 'Subtotal (after discount applied)';
+
+                        const tdElement = document.createElement('td');
+                        //
+                        const spanElement = document.createElement('span');
+                        spanElement.classList.add('calculated-subtotal');
+                        spanElement.textContent = '$' + subtotalAfterDiscount.toFixed(2);
+                        //
+                        console.log(spanElement);
+                        tdElement.appendChild(spanElement);
+                        console.log(tdElement);
+                        newRow.appendChild(thElement);
+                        newRow.appendChild(tdElement);
+                        console.log(newRow);
+                        //
+                        const discountRows = document.querySelectorAll('.cart-discount');
+                        //
+                        const lastDiscountRow = discountRows[discountRows.length - 1];
+                        //
+                        lastDiscountRow.parentNode.insertBefore(newRow, lastDiscountRow.nextSibling);
+
+                        console.log(lastDiscountRow);
+                    }
+                    }
+
+
+                    const thElements = document.querySelectorAll("th");
+                    // console.log(thElements);
+
+                    thElements.forEach(th => {
+
+                        if (th.textContent.includes("Coupon")) {
+                            const couponValue = th.textContent.split(":")[1].trim();
+
+                            th.textContent = "Coupon/Promotion Applied: " + couponValue;
+                        }
+                    });
+                }
+
+                checkAndUpdateThElements();
+
+                setInterval(checkAndUpdateThElements, 100);
+            });
+        </script>
+        <?php
+    }
+}
