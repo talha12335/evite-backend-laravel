@@ -20,7 +20,13 @@ class AdminPasswordResetController extends Controller
     /** Enough time to open inbox and complete reset without DNS flakiness on validation. */
     private const RESET_EXPIRY_MINUTES = 60;
 
-    private const GENERIC_FORGOT_RESPONSE = 'If an account exists for this email, a password reset link has been sent.';
+    private const NOT_FOUND_MESSAGE = 'No admin account is registered with this email address.';
+
+    private const SUCCESS_MESSAGE = 'Check your inbox (and spam folder) for the password reset link.';
+
+    private const RATE_LIMIT_MESSAGE = 'Too many reset attempts. Please try again in a few minutes.';
+
+    private const MAIL_FAILED_MESSAGE = 'We could not send the email. Please try again later or contact support.';
 
     /** @var AdminTransactionalMailService */
     private $adminTransactionalMail;
@@ -52,9 +58,9 @@ class AdminPasswordResetController extends Controller
 
         if (RateLimiter::tooManyAttempts($ipKey, 10) || RateLimiter::tooManyAttempts($emailKey, 3)) {
             return response()->json([
-                'status' => 1,
-                'message' => self::GENERIC_FORGOT_RESPONSE,
-            ]);
+                'status' => 0,
+                'message' => self::RATE_LIMIT_MESSAGE,
+            ], 429);
         }
 
         RateLimiter::hit($ipKey, 15 * 60);
@@ -64,42 +70,53 @@ class AdminPasswordResetController extends Controller
             ->whereIn('role_id', [1, 2, 3])
             ->first();
 
-        if ($user) {
-            $plainToken = Str::random(64);
-            $hashedToken = $this->hashToken($plainToken);
+        if (!$user) {
+            return response()->json([
+                'status' => 0,
+                'message' => self::NOT_FOUND_MESSAGE,
+            ], 404);
+        }
 
+        $plainToken = Str::random(64);
+        $hashedToken = $this->hashToken($plainToken);
+
+        DB::table('password_resets')->where('email', $user->email)->delete();
+        DB::table('password_resets')->insert([
+            'email' => $user->email,
+            'token' => $hashedToken,
+            'created_at' => now(),
+        ]);
+
+        try {
+            $payload = [
+                'name' => $user->name ?: 'Admin',
+                'expires_in_minutes' => self::RESET_EXPIRY_MINUTES,
+                'reset_url' => $this->buildResetUrl($plainToken, $user->email),
+                'support_email' => $this->footerSupportEmail(),
+            ];
+
+            $this->adminTransactionalMail->sendPasswordReset(
+                $user->email,
+                AdminPasswordResetMail::SUBJECT_LINE,
+                $payload
+            );
+        } catch (\Throwable $exception) {
             DB::table('password_resets')->where('email', $user->email)->delete();
-            DB::table('password_resets')->insert([
+            Log::warning('Admin password reset email failed.', [
+                'user_id' => $user->id,
                 'email' => $user->email,
-                'token' => $hashedToken,
-                'created_at' => now(),
+                'error' => $exception->getMessage(),
             ]);
 
-            try {
-                $payload = [
-                    'name' => $user->name ?: 'Admin',
-                    'expires_in_minutes' => self::RESET_EXPIRY_MINUTES,
-                    'reset_url' => $this->buildResetUrl($plainToken, $user->email),
-                    'support_email' => $this->footerSupportEmail(),
-                ];
-
-                $this->adminTransactionalMail->sendPasswordReset(
-                    $user->email,
-                    AdminPasswordResetMail::SUBJECT_LINE,
-                    $payload
-                );
-            } catch (\Throwable $exception) {
-                Log::warning('Admin password reset email failed.', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'error' => $exception->getMessage(),
-                ]);
-            }
+            return response()->json([
+                'status' => 0,
+                'message' => self::MAIL_FAILED_MESSAGE,
+            ], 503);
         }
 
         return response()->json([
             'status' => 1,
-            'message' => self::GENERIC_FORGOT_RESPONSE,
+            'message' => self::SUCCESS_MESSAGE,
         ]);
     }
 
