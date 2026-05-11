@@ -5,6 +5,7 @@ use App\Http\Controllers\api\AdminUserController;
 use App\Http\Controllers\api\AdminClientController;
 use App\Http\Controllers\api\AdminInvitationController;
 use App\Http\Controllers\api\GuestController;
+use App\Http\Controllers\api\HealthController;
 use App\Http\Controllers\api\InvitationController;
 use App\Http\Controllers\api\LocationController;
 use App\Http\Controllers\api\AdminAnalyticsController;
@@ -34,6 +35,7 @@ use Illuminate\Support\Facades\Route;
 //     return $request->user();
 // });
 
+Route::get('/health', [HealthController::class, 'index']);
 
 //Route::group(['middleware' => 'cors'], function () {
 Route::group(['prefix' => 'user'], function () {

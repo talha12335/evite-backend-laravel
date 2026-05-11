@@ -28,9 +28,8 @@ return [
     |
     */
 
-    'compiled' => env(
-        'VIEW_COMPILED_PATH',
-        realpath(storage_path('framework/views'))
-    ),
+    // Do not use realpath() here: on fresh deploy the directory may not exist yet,
+    // and realpath() returns false, which triggers "Please provide a valid cache path."
+    'compiled' => env('VIEW_COMPILED_PATH', storage_path('framework/views')),
 
 ];
