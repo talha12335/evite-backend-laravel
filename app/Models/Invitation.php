@@ -18,6 +18,7 @@ class Invitation extends Model
         "template_id",
         'host_contact',
         'host_name',
+        'studio_location',
         'turning',
         'honoree_name',
         'location_id'

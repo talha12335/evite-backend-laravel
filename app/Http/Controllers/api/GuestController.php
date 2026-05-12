@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendGuestInvitationEmail;
 use App\Models\AdminMailSetting;
+use App\Models\EmailEvent;
 use App\Models\Guest;
 use App\Models\Invitation;
 use Exception;
@@ -13,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Str;
 
 class GuestController extends Controller
 {
@@ -73,7 +76,7 @@ class GuestController extends Controller
                 throw new Exception('Guest not found');
             }
 
-            $invitationRow = Invitation::select('image', 'honoree_name')
+            $invitationRow = Invitation::with('location')
                 ->where('id', $request->id)
                 ->first();
 
@@ -111,73 +114,183 @@ class GuestController extends Controller
             ], 503);
         }
 
-        $introLine = 'Here is your invitation from Honest Art.';
-        if (is_string($invitationRow->honoree_name) && $invitationRow->honoree_name !== '') {
-            $decoded = json_decode($invitationRow->honoree_name, true);
-            if (is_array($decoded) && !empty($decoded['text'])) {
-                $introLine = 'Join us in celebrating ' . strip_tags($decoded['text']) . '!';
+        $bouncedEmails = EmailEvent::whereIn('event_type', ['bounce', 'dropped', 'spamreport'])
+            ->pluck('email')
+            ->map(fn($e) => strtolower(trim($e)))
+            ->unique()
+            ->toArray();
+
+        $sendable = [];
+        $skipped = [];
+        foreach ($guest_emails as $email) {
+            if (in_array(strtolower(trim($email)), $bouncedEmails, true)) {
+                $skipped[] = $email;
+            } else {
+                $sendable[] = $email;
             }
         }
 
+        if (empty($sendable)) {
+            return response()->json([
+                'message' => 'Guest list saved but all emails were skipped (previously bounced or reported spam)',
+                'status' => 0,
+                'skipped_emails' => $skipped,
+                'guest_data' => $guest,
+            ], 200);
+        }
+
+        $ctx = $this->buildGuestInvitationMailContext($invitationRow, $invitationImageUrl);
+
         try {
-            $htmlContent = View::make('emails.guest_invitation', [
-                'imageUrl' => $invitationImageUrl,
-                'introLine' => $introLine,
-            ])->render();
+            $htmlContent = View::make('emails.guest_invitation', $ctx['view'])->render();
+            $plainContent = $ctx['plain_body'] !== '' ? $ctx['plain_body'] : 'Honest Art studio invitation — please open the HTML part of this email for full event details and the invitation preview.';
+            $subject = $ctx['subject'];
 
-            $plainContent = trim(html_entity_decode(strip_tags(preg_replace('/<br\s*\/?>/i', "\n", $htmlContent))));
-
-            $toList = [];
-            foreach ($guest_emails as $email) {
-                $toList[] = ['email' => $email];
+            foreach ($sendable as $i => $email) {
+                SendGuestInvitationEmail::dispatch(
+                    $email,
+                    $mailer['api_key'],
+                    $mailer['from_email'],
+                    $mailer['from_name'],
+                    $subject,
+                    $htmlContent,
+                    $plainContent
+                )->delay(now()->addSeconds($i * 1));
             }
 
-            $subject = "You're invited — Honest Art";
-
-            $sendGridResponse = Http::withToken($mailer['api_key'])
-                ->withHeaders(['Content-Type' => 'application/json'])
-                ->timeout(30)
-                ->post('https://api.sendgrid.com/v3/mail/send', [
-                    'personalizations' => [[
-                        'to' => $toList,
-                    ]],
-                    'from' => [
-                        'email' => $mailer['from_email'],
-                        'name' => $mailer['from_name'],
-                    ],
-                    'subject' => $subject,
-                    'content' => [
-                        ['type' => 'text/plain', 'value' => $plainContent !== '' ? $plainContent : $introLine],
-                        ['type' => 'text/html', 'value' => $htmlContent],
-                    ],
-                ]);
-
-            if (!$sendGridResponse->successful()) {
-                $body = $sendGridResponse->body();
-                $decodedErr = json_decode($body, true);
-                $msg = $body;
-                if (is_array($decodedErr)) {
-                    if (!empty($decodedErr['errors'][0]['message'])) {
-                        $msg = $decodedErr['errors'][0]['message'];
-                    } elseif (!empty($decodedErr['message'])) {
-                        $msg = is_string($decodedErr['message']) ? $decodedErr['message'] : json_encode($decodedErr['message']);
-                    }
-                }
-                throw new Exception('SendGrid HTTP ' . $sendGridResponse->status() . ': ' . $msg);
+            $responseMsg = 'Guest list saved. ' . count($sendable) . ' emails queued.';
+            if (!empty($skipped)) {
+                $responseMsg .= ' ' . count($skipped) . ' skipped (bounced/spam).';
             }
 
             return response()->json([
-                'message' => 'Guest list saved and invitation email sent',
+                'message' => $responseMsg,
                 'status' => 1,
                 'guest_data' => $guest,
+                'email_stats' => [
+                    'queued' => count($sendable),
+                    'skipped_bounced' => $skipped,
+                ],
             ], 200);
         } catch (Exception $e) {
             return response()->json([
-                'message' => 'Guest list was saved but the email could not be sent',
+                'message' => 'Guest list was saved but the emails could not be queued',
                 'status' => 0,
                 'error_message' => $e->getMessage(),
             ], 502);
         }
+    }
+
+    /**
+     * Invitation fields are often stored as JSON with a "text" key; normalize to plain string.
+     */
+    private function invitationPlainFromDbField(?string $raw): ?string
+    {
+        if ($raw === null || trim($raw) === '') {
+            return null;
+        }
+        $trimmed = trim($raw);
+        $decoded = json_decode($trimmed, true);
+        if (is_array($decoded) && isset($decoded['text']) && is_string($decoded['text'])) {
+            $out = trim(strip_tags($decoded['text']));
+
+            return $out !== '' ? $out : null;
+        }
+        $out = trim(strip_tags($trimmed));
+
+        return $out !== '' ? $out : null;
+    }
+
+    /**
+     * Transactional-style copy, structured plain text, and a factual subject line.
+     *
+     * @return array{subject: string, plain_body: string, view: array<string, mixed>}
+     */
+    private function buildGuestInvitationMailContext(Invitation $invitation, string $imageUrl): array
+    {
+        $honoree = $this->invitationPlainFromDbField($invitation->honoree_name);
+        $occasion = $this->invitationPlainFromDbField($invitation->occasion);
+        $date = $this->invitationPlainFromDbField($invitation->date);
+        $time = $this->invitationPlainFromDbField($invitation->time);
+        $hostName = $this->invitationPlainFromDbField($invitation->host_name);
+        $hostContact = $this->invitationPlainFromDbField($invitation->host_contact);
+
+        $locationLine = null;
+        if ($invitation->relationLoaded('location') && $invitation->location) {
+            $loc = $invitation->location;
+            $parts = array_filter([$loc->name ?? null, $loc->city ?? null]);
+            $locationLine = $parts !== [] ? implode(', ', $parts) : null;
+        }
+
+        $detailRows = [];
+        if ($honoree) {
+            $detailRows[] = ['label' => 'Celebration for', 'value' => $honoree];
+        }
+        if ($occasion) {
+            $detailRows[] = ['label' => 'Occasion', 'value' => $occasion];
+        }
+        if ($date) {
+            $detailRows[] = ['label' => 'Date', 'value' => $date];
+        }
+        if ($time) {
+            $detailRows[] = ['label' => 'Time', 'value' => $time];
+        }
+        if ($locationLine) {
+            $detailRows[] = ['label' => 'Studio location', 'value' => $locationLine];
+        }
+        if ($hostName) {
+            $detailRows[] = ['label' => 'RSVP name', 'value' => $hostName];
+        }
+        if ($hostContact) {
+            $detailRows[] = ['label' => 'RSVP phone', 'value' => $hostContact];
+        }
+
+        $subject = 'Honest Art studio invitation';
+        $focus = $honoree ?: $occasion;
+        if ($focus) {
+            $subject = 'Honest Art — ' . Str::limit($focus, 48);
+        }
+
+        $preheader = 'Your studio invitation includes event details below and a visual preview.';
+        if ($date && $time) {
+            $preheader = Str::limit('Details: ' . $date . ' · ' . $time . ($locationLine ? ' · ' . $locationLine : ''), 115);
+        } elseif ($date) {
+            $preheader = Str::limit('Date: ' . $date . ($locationLine ? ' · ' . $locationLine : ''), 115);
+        }
+
+        $plainLines = [
+            'HONEST ART — STUDIO INVITATION',
+            '',
+            'You are receiving this email because a host entered your address to send their Honest Art invitation.',
+            'This message is transactional (not a newsletter).',
+            '',
+        ];
+        foreach ($detailRows as $row) {
+            $plainLines[] = $row['label'] . ': ' . $row['value'];
+        }
+        if ($detailRows === []) {
+            $plainLines[] = '(No extra event fields were stored with this invitation.)';
+            $plainLines[] = '';
+        } else {
+            $plainLines[] = '';
+        }
+        $plainLines[] = 'Invitation preview image URL:';
+        $plainLines[] = $imageUrl;
+        $plainLines[] = '';
+        $plainLines[] = 'If you do not recognize this event, you may ignore this email.';
+        $plainLines[] = '';
+        $plainLines[] = '© ' . date('Y') . ' Honest Art';
+
+        return [
+            'subject' => $subject,
+            'plain_body' => implode("\n", $plainLines),
+            'view' => [
+                'imageUrl' => $imageUrl,
+                'detailRows' => $detailRows,
+                'preheader' => $preheader,
+                'hasDetails' => $detailRows !== [],
+            ],
+        ];
     }
 
     /**

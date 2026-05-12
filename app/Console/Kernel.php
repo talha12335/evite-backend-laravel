@@ -15,6 +15,10 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
+        $schedule->command('queue:work --stop-when-empty --tries=3 --backoff=30')
+            ->everyMinute()
+            ->withoutOverlapping();
+
         $schedule->command('email:health-check')->hourly();
     }
 

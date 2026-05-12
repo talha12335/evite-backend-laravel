@@ -36,9 +36,6 @@ class AdminAuthController extends Controller
             ], 403);
         }
 
-        // Revoke all previous tokens for this user
-        $user->tokens()->delete();
-
         $token = $user->createToken('admin-token')->plainTextToken;
 
         return response()->json([

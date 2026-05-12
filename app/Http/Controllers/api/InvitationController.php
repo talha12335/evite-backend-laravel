@@ -158,6 +158,9 @@ class InvitationController extends Controller
             }
             $invitation->host_name = $request->input('host_name');
             $invitation->host_contact = $request->input('host_contact');
+            if ($request->has('studio_location')) {
+                $invitation->studio_location = $request->input('studio_location');
+            }
             $invitation->honoree_name = $request->input('honoree_name');
             $invitation->user_id = $request->id;
             $invitation->template_id = $request->template_id;
@@ -285,6 +288,9 @@ class InvitationController extends Controller
                 }
                 $data->host_name = $request->input('host_name');
                 $data->host_contact = $request->input('host_contact');
+                if ($request->has('studio_location')) {
+                    $data->studio_location = $request->input('studio_location');
+                }
                 $data->honoree_name = $request->input('honoree_name');
                 if ($request->has('location_id')) {
                     $data->location_id = $request->input('location_id');

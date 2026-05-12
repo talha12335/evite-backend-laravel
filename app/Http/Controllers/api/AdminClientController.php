@@ -77,8 +77,14 @@ class AdminClientController extends Controller
         $invitations = $user->invitations->map(function ($inv) {
             return [
                 'id' => $inv->id,
+                'image_url' => $inv->image ? url('uploads/' . $inv->image) : null,
                 'occasion' => $inv->occasion,
                 'host_name' => $inv->host_name,
+                'host_contact' => $inv->host_contact,
+                'studio_location' => $inv->studio_location,
+                'honoree_name' => $inv->honoree_name,
+                'turning' => $inv->turning,
+                'room' => $inv->room,
                 'date' => $inv->date,
                 'time' => $inv->time,
                 'location' => $inv->location ? $inv->location->name : null,
