@@ -89,6 +89,11 @@ class GuestController extends Controller
             }
 
             $invitationImageUrl = url('uploads/' . $invitationRow->image);
+            $imagePath = public_path('uploads/' . $invitationRow->image);
+            $imageBase64 = null;
+            if (file_exists($imagePath)) {
+                $imageBase64 = base64_encode(file_get_contents($imagePath));
+            }
 
             $guest_emails = json_decode($guest->guestEmail, true);
             if (!is_array($guest_emails)) {
@@ -154,7 +159,9 @@ class GuestController extends Controller
                     $mailer['from_name'],
                     $subject,
                     $htmlContent,
-                    $plainContent
+                    $plainContent,
+                    $imageBase64,
+                    $invitationRow->image
                 )->delay(now()->addSeconds($i * 1));
             }
 

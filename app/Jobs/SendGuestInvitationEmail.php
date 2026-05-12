@@ -25,6 +25,8 @@ class SendGuestInvitationEmail implements ShouldQueue
     private string $subject;
     private string $htmlContent;
     private string $plainContent;
+    private ?string $imageBase64;
+    private ?string $imageFilename;
 
     public function __construct(
         string $email,
@@ -33,7 +35,9 @@ class SendGuestInvitationEmail implements ShouldQueue
         string $fromName,
         string $subject,
         string $htmlContent,
-        string $plainContent
+        string $plainContent,
+        ?string $imageBase64 = null,
+        ?string $imageFilename = null
     ) {
         $this->email = $email;
         $this->apiKey = $apiKey;
@@ -42,6 +46,8 @@ class SendGuestInvitationEmail implements ShouldQueue
         $this->subject = $subject;
         $this->htmlContent = $htmlContent;
         $this->plainContent = $plainContent;
+        $this->imageBase64 = $imageBase64;
+        $this->imageFilename = $imageFilename;
     }
 
     public function handle()
@@ -55,36 +61,56 @@ class SendGuestInvitationEmail implements ShouldQueue
             return;
         }
 
+        $html = $this->htmlContent;
+        if ($this->imageBase64) {
+            $html = str_replace('src="cid:invitation-preview"', 'src="cid:invitation-preview"', $html);
+        }
+
+        $payload = [
+            'personalizations' => [[
+                'to' => [['email' => $this->email]],
+            ]],
+            'from' => [
+                'email' => $this->fromEmail,
+                'name' => $this->fromName,
+            ],
+            'reply_to' => [
+                'email' => $this->fromEmail,
+                'name' => $this->fromName,
+            ],
+            'subject' => $this->subject,
+            'content' => [
+                ['type' => 'text/plain', 'value' => $this->plainContent],
+                ['type' => 'text/html', 'value' => $html],
+            ],
+            'headers' => [
+                'List-Unsubscribe' => '<mailto:' . $this->fromEmail . '?subject=unsubscribe>',
+                'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click',
+                'X-Priority' => '3',
+            ],
+            'tracking_settings' => [
+                'open_tracking' => ['enable' => false],
+                'click_tracking' => ['enable' => false],
+            ],
+        ];
+
+        if ($this->imageBase64) {
+            $ext = pathinfo($this->imageFilename ?? 'invitation.png', PATHINFO_EXTENSION) ?: 'png';
+            $mimeType = $ext === 'jpg' || $ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+
+            $payload['attachments'] = [[
+                'content' => $this->imageBase64,
+                'type' => $mimeType,
+                'filename' => 'invitation.' . $ext,
+                'disposition' => 'inline',
+                'content_id' => 'invitation-preview',
+            ]];
+        }
+
         $response = Http::withToken($this->apiKey)
             ->withHeaders(['Content-Type' => 'application/json'])
             ->timeout(30)
-            ->post('https://api.sendgrid.com/v3/mail/send', [
-                'personalizations' => [[
-                    'to' => [['email' => $this->email]],
-                ]],
-                'from' => [
-                    'email' => $this->fromEmail,
-                    'name' => $this->fromName,
-                ],
-                'reply_to' => [
-                    'email' => $this->fromEmail,
-                    'name' => $this->fromName,
-                ],
-                'subject' => $this->subject,
-                'content' => [
-                    ['type' => 'text/plain', 'value' => $this->plainContent],
-                    ['type' => 'text/html', 'value' => $this->htmlContent],
-                ],
-                'headers' => [
-                    'List-Unsubscribe' => '<mailto:' . $this->fromEmail . '?subject=unsubscribe>',
-                    'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click',
-                    'X-Priority' => '3',
-                ],
-                'tracking_settings' => [
-                    'open_tracking' => ['enable' => true],
-                    'click_tracking' => ['enable' => false],
-                ],
-            ]);
+            ->post('https://api.sendgrid.com/v3/mail/send', $payload);
 
         if (!$response->successful()) {
             $body = $response->body();
