@@ -94,7 +94,7 @@ Route::middleware(['api.admin:1,2,3'])->group(function () {
             'name' => 'nullable|string|max:120',
             'email' => [
                 'nullable',
-                'email:rfc,dns',
+                'email',
                 'max:255',
                 Rule::unique('users', 'email')->ignore($user->id),
             ],

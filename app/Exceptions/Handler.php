@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -37,5 +38,20 @@ class Handler extends ExceptionHandler
         $this->reportable(function (Throwable $e) {
             //
         });
+    }
+
+    public function render($request, Throwable $e)
+    {
+        if ($e instanceof ValidationException && $request->expectsJson()) {
+            $errors = $e->errors();
+            $firstMessage = collect($errors)->flatten()->first() ?? 'Validation failed.';
+            return response()->json([
+                'status'  => 0,
+                'message' => $firstMessage,
+                'errors'  => $errors,
+            ], 422);
+        }
+
+        return parent::render($request, $e);
     }
 }
