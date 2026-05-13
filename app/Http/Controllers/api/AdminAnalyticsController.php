@@ -126,7 +126,7 @@ class AdminAnalyticsController extends Controller
             'message' => 'Admin overview generated',
             'data' => [
                 'kpis' => [
-                    'total_users' => User::whereIn('role_id', [1, 2, 3])->count(),
+                    'total_users' => User::whereNotIn('role_id', [1, 2, 3])->count(),
                     'total_invitations' => $invitationCount,
                     'total_guests' => $guestCount,
                     'active_locations' => $activeLocationCount,
