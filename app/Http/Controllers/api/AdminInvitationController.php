@@ -51,7 +51,7 @@ class AdminInvitationController extends Controller
             $query->whereDate('date', '<=', $dateTo);
         }
 
-        $perPage = min((int) ($request->query('per_page', 15)), 100);
+        $perPage = min((int) ($request->query('per_page', 15)), 5000);
         $paginated = $query->paginate($perPage);
 
         // Build clean formatted items
