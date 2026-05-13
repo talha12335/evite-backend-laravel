@@ -12,7 +12,7 @@ class LocationController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Location::query()->orderBy('name');
+        $query = Location::query()->orderBy('id', 'DESC');
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);

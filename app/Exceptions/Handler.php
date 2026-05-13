@@ -46,9 +46,9 @@ class Handler extends ExceptionHandler
             $errors = $e->errors();
             $firstMessage = collect($errors)->flatten()->first() ?? 'Validation failed.';
             return response()->json([
-                'status'  => 0,
+                'status' => 0,
                 'message' => $firstMessage,
-                'errors'  => $errors,
+                'errors' => $errors,
             ], 422);
         }
 
