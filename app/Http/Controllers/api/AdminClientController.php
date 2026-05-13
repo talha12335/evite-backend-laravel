@@ -35,7 +35,7 @@ class AdminClientController extends Controller
             $query->whereDate('created_at', '<=', $dateTo);
         }
 
-        $perPage = min((int) ($request->query('per_page', 15)), 100);
+        $perPage = min((int) ($request->query('per_page', 15)), 5000);
         $paginated = $query->paginate($perPage);
 
         $items = $paginated->getCollection()->map(function ($user) {
