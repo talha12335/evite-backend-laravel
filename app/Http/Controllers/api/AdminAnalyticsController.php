@@ -64,7 +64,14 @@ class AdminAnalyticsController extends Controller
         }
 
         $invitationCount = (clone $invitationQuery)->count();
-        $guestCount = Guest::whereIn('invitation_id', (clone $invitationQuery)->pluck('id'))->count();
+
+        // Count unique guest emails using MySQL JSON_TABLE — avoids loading all rows into PHP
+        $invitationIds = (clone $invitationQuery)->pluck('id');
+        $guestCount = DB::table('guests')
+            ->whereIn('invitation_id', $invitationIds)
+            ->selectRaw('COUNT(DISTINCT LOWER(TRIM(je.email))) AS total')
+            ->crossJoin(DB::raw('JSON_TABLE(guestEmail, \'$[*]\' COLUMNS (email VARCHAR(255) PATH \'$\')) AS je'))
+            ->value('total') ?? 0;
 
         $activeLocationCountQuery = Location::where('status', 'active');
         if ($adminUser && (int) $adminUser->role_id === 2 && $adminUser->location_id) {
@@ -119,7 +126,7 @@ class AdminAnalyticsController extends Controller
             'message' => 'Admin overview generated',
             'data' => [
                 'kpis' => [
-                    'total_users' => User::count(),
+                    'total_users' => User::whereIn('role_id', [1, 2, 3])->count(),
                     'total_invitations' => $invitationCount,
                     'total_guests' => $guestCount,
                     'active_locations' => $activeLocationCount,
