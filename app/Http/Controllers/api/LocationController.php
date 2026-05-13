@@ -31,14 +31,14 @@ class LocationController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100',
-            'address_line_1' => 'nullable|string|max:255',
+            'address_line_1' => 'required|string|max:255',
             'address_line_2' => 'nullable|string|max:255',
-            'city' => 'nullable|string|max:100',
-            'state' => 'nullable|string|max:100',
+            'city' => 'required|string|max:100',
+            'state' => 'required|string|max:100',
             'postal_code' => 'nullable|string|max:20',
             'country' => 'nullable|string|max:100',
-            'phone' => 'nullable|string|max:30',
-            'email' => 'nullable|email|max:100',
+            'phone' => 'required|string|max:30',
+            'email' => 'required|email|max:100',
             'status' => 'nullable|in:active,inactive',
         ]);
 
@@ -103,14 +103,14 @@ class LocationController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|required|string|max:100',
-            'address_line_1' => 'nullable|string|max:255',
+            'address_line_1' => 'sometimes|required|string|max:255',
             'address_line_2' => 'nullable|string|max:255',
-            'city' => 'nullable|string|max:100',
-            'state' => 'nullable|string|max:100',
+            'city' => 'sometimes|required|string|max:100',
+            'state' => 'sometimes|required|string|max:100',
             'postal_code' => 'nullable|string|max:20',
             'country' => 'nullable|string|max:100',
-            'phone' => 'nullable|string|max:30',
-            'email' => 'nullable|email|max:100',
+            'phone' => 'sometimes|required|string|max:30',
+            'email' => 'sometimes|required|email|max:100',
             'status' => 'nullable|in:active,inactive',
         ]);
 
