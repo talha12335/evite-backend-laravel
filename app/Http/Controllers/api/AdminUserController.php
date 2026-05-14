@@ -57,6 +57,13 @@ class AdminUserController extends Controller
             'location_id' => 'nullable|exists:locations,id',
         ]);
 
+        if ((int) $validated['role_id'] === 2 && empty($validated['location_id'])) {
+            return response()->json([
+                'status' => 0,
+                'message' => 'Studio Admin must be assigned to a studio location.',
+            ], 422);
+        }
+
         $user = User::create([
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
@@ -97,6 +104,15 @@ class AdminUserController extends Controller
             'location_id' => 'sometimes|nullable|exists:locations,id',
             'password' => 'sometimes|string|min:8',
         ]);
+
+        $effectiveRoleId = $validated['role_id'] ?? $target->role_id;
+        $effectiveLocationId = array_key_exists('location_id', $validated) ? $validated['location_id'] : $target->location_id;
+        if ((int) $effectiveRoleId === 2 && empty($effectiveLocationId)) {
+            return response()->json([
+                'status' => 0,
+                'message' => 'Studio Admin must be assigned to a studio location.',
+            ], 422);
+        }
 
         if (isset($validated['role_id'])) {
             $target->role_id = $validated['role_id'];
