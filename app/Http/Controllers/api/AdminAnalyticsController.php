@@ -126,7 +126,12 @@ class AdminAnalyticsController extends Controller
             'message' => 'Admin overview generated',
             'data' => [
                 'kpis' => [
-                    'total_users' => User::whereNotIn('role_id', [1, 2, 3])->count(),
+                    'total_users' => $adminUser && (int) $adminUser->role_id === 2 && $adminUser->location_id
+                        ? User::whereNotIn('role_id', [1, 2, 3])
+                            ->whereHas('invitations', function ($q) use ($adminUser) {
+                                $q->where('location_id', $adminUser->location_id);
+                            })->count()
+                        : User::whereNotIn('role_id', [1, 2, 3])->count(),
                     'total_invitations' => $invitationCount,
                     'total_guests' => $guestCount,
                     'active_locations' => $activeLocationCount,
