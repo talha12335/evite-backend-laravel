@@ -19,9 +19,19 @@ class AdminClientController extends Controller
      */
     public function index(Request $request)
     {
+        $actingAdmin = $request->attributes->get('admin_user');
+
         $query = User::whereNotIn('role_id', [1, 2, 3])
             ->withCount('invitations')
             ->orderBy('id', 'desc');
+
+        // Studio Admins (role_id=2) can only see clients who have invitations at their location
+        if ($actingAdmin && (int) $actingAdmin->role_id === 2 && $actingAdmin->location_id) {
+            $locationId = $actingAdmin->location_id;
+            $query->whereHas('invitations', function ($q) use ($locationId) {
+                $q->where('location_id', $locationId);
+            });
+        }
 
         if ($q = $request->query('q')) {
             $query->where('email', 'like', '%' . $q . '%');
