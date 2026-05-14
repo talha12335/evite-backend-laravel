@@ -21,8 +21,15 @@ class AdminInvitationController extends Controller
      */
     public function index(Request $request)
     {
+        $actingAdmin = $request->attributes->get('admin_user');
+
         $query = Invitation::with(['user:id,email', 'location:id,name', 'guests'])
             ->orderBy('id', 'desc');
+
+        // Studio Admins (role_id=2) can only see their own location's invitations
+        if ($actingAdmin && (int) $actingAdmin->role_id === 2 && $actingAdmin->location_id) {
+            $query->where('location_id', $actingAdmin->location_id);
+        }
 
         // Full-text search across key fields
         if ($q = $request->query('q')) {
@@ -36,7 +43,10 @@ class AdminInvitationController extends Controller
         }
 
         if ($locationId = $request->query('location_id')) {
-            $query->where('location_id', $locationId);
+            // For Studio Admins, ignore any location_id param — their scope is already forced above
+            if (!($actingAdmin && (int) $actingAdmin->role_id === 2)) {
+                $query->where('location_id', $locationId);
+            }
         }
 
         if ($occasion = $request->query('occasion')) {

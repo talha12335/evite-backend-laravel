@@ -12,9 +12,19 @@ class AdminUserController extends Controller
 {
     /**
      * List all admin users (role_id 1, 2, 3).
+     * Only accessible by Global Admins (role_id 1).
      */
-    public function index()
+    public function index(Request $request)
     {
+        $actingAdmin = $request->attributes->get('admin_user');
+
+        if (!$actingAdmin || (int) $actingAdmin->role_id !== 1) {
+            return response()->json([
+                'status' => 0,
+                'message' => 'Only a Global Admin can view admin users.',
+            ], 403);
+        }
+
         $users = User::whereIn('role_id', [1, 2, 3])
             ->with('location:id,name')
             ->get(['id', 'email', 'role_id', 'location_id', 'created_at']);
