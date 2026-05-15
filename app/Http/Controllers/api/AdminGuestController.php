@@ -34,6 +34,11 @@ class AdminGuestController extends Controller
             $rows->where('guestEmail', 'like', '%' . $q . '%');
         }
 
+        $totalEmails = (clone $rows)->get()->reduce(function ($carry, $guestRow) {
+            $emails = json_decode($guestRow->guestEmail, true);
+            return $carry + (is_array($emails) ? count($emails) : 1);
+        }, 0);
+
         $perPage = min((int) ($request->query('per_page', 15)), 5000);
         $paginated = $rows->paginate($perPage);
 
@@ -64,6 +69,7 @@ class AdminGuestController extends Controller
         return response()->json([
             'status' => 1,
             'data' => $flat,
+            'total_emails' => $totalEmails,
             'pagination' => [
                 'total' => $paginated->total(),
                 'per_page' => $paginated->perPage(),
