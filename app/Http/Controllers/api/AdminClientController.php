@@ -61,9 +61,9 @@ class AdminClientController extends Controller
             $latestInv = $user->invitations()->with('location:id,name')->orderBy('id', 'desc')->first();
             return [
                 'id' => $user->id,
-                'name' => $user->name,
+                'name' => $user->name ?: ($latestInv ? self::extractPlainText($latestInv->host_name) : null),
                 'email' => $user->email,
-                'phone' => $latestInv->host_contact ?? null,
+                'phone' => $latestInv ? self::extractPlainText($latestInv->host_contact) : null,
                 'location_name' => $latestInv && $latestInv->location ? $latestInv->location->name : null,
                 'invitations_count' => $user->invitations_count,
                 'created_at' => $user->created_at ? $user->created_at->toDateTimeString() : null,
@@ -125,5 +125,19 @@ class AdminClientController extends Controller
                 'created_at' => $user->created_at ? $user->created_at->toDateTimeString() : null,
             ],
         ]);
+    }
+
+    private static function extractPlainText(?string $raw): ?string
+    {
+        if ($raw === null || trim($raw) === '') {
+            return null;
+        }
+        $trimmed = trim($raw);
+        $decoded = json_decode($trimmed, true);
+        if (is_array($decoded) && isset($decoded['text']) && is_string($decoded['text'])) {
+            $out = trim(strip_tags($decoded['text']));
+            return $out !== '' ? $out : null;
+        }
+        return trim(strip_tags($trimmed)) ?: null;
     }
 }
