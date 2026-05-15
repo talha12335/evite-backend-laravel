@@ -217,8 +217,17 @@ class GuestController extends Controller
     {
         $honoree = $this->invitationPlainFromDbField($invitation->honoree_name);
         $occasion = $this->invitationPlainFromDbField($invitation->occasion);
-        $date = $this->invitationPlainFromDbField($invitation->date);
+        $rawDate = $this->invitationPlainFromDbField($invitation->date);
+        $date = $rawDate;
+        if ($rawDate) {
+            try {
+                $date = \Carbon\Carbon::parse($rawDate)->format('F j, Y');
+            } catch (\Throwable $th) {
+                $date = $rawDate;
+            }
+        }
         $time = $this->invitationPlainFromDbField($invitation->time);
+        $endTime = $invitation->end_time;
         $hostName = $this->invitationPlainFromDbField($invitation->host_name);
         $hostContact = $this->invitationPlainFromDbField($invitation->host_contact);
 
@@ -240,7 +249,10 @@ class GuestController extends Controller
             $detailRows[] = ['label' => 'Date', 'value' => $date];
         }
         if ($time) {
-            $detailRows[] = ['label' => 'Time', 'value' => $time];
+            $detailRows[] = ['label' => 'Start time', 'value' => $time];
+        }
+        if ($endTime) {
+            $detailRows[] = ['label' => 'End time', 'value' => $endTime];
         }
         if ($locationLine) {
             $detailRows[] = ['label' => 'Studio location', 'value' => $locationLine];

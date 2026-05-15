@@ -13,6 +13,7 @@ class Invitation extends Model
         'room',
         'date',
         'time',
+        'end_time',
         'user_id',
         'image',
         "template_id",
