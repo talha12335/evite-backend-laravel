@@ -54,6 +54,13 @@ class AdminClientController extends Controller
             $query->whereDate('created_at', '<=', $dateTo);
         }
 
+        $hasInvitations = $request->query('has_invitations');
+        if ($hasInvitations === 'yes') {
+            $query->has('invitations');
+        } elseif ($hasInvitations === 'no') {
+            $query->doesntHave('invitations');
+        }
+
         $perPage = min((int) ($request->query('per_page', 15)), 5000);
         $paginated = $query->paginate($perPage);
 
