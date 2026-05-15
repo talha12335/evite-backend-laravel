@@ -217,13 +217,24 @@ class GuestController extends Controller
     {
         $honoree = $this->invitationPlainFromDbField($invitation->honoree_name);
         $occasion = $this->invitationPlainFromDbField($invitation->occasion);
+
+        $turningAge = null;
+        if ($occasion && preg_match('/is turning (\d+)/', $occasion, $matches)) {
+            $turningAge = $matches[1];
+            $occasion = null;
+        }
+
         $rawDate = $this->invitationPlainFromDbField($invitation->date);
         $date = $rawDate;
         if ($rawDate) {
             try {
-                $date = \Carbon\Carbon::parse($rawDate)->format('F j, Y');
+                $date = \Carbon\Carbon::createFromFormat('n-j-y', $rawDate)->format('F j, Y');
             } catch (\Throwable $th) {
-                $date = $rawDate;
+                try {
+                    $date = \Carbon\Carbon::parse($rawDate)->format('F j, Y');
+                } catch (\Throwable $th2) {
+                    $date = $rawDate;
+                }
             }
         }
         $time = $this->invitationPlainFromDbField($invitation->time);
@@ -247,6 +258,9 @@ class GuestController extends Controller
         }
         if ($occasion) {
             $detailRows[] = ['label' => 'Occasion', 'value' => $occasion];
+        }
+        if ($turningAge) {
+            $detailRows[] = ['label' => 'Age Turning', 'value' => $turningAge];
         }
         if ($date) {
             $detailRows[] = ['label' => 'Date', 'value' => $date];
