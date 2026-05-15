@@ -239,8 +239,11 @@ class GuestController extends Controller
         }
 
         $detailRows = [];
+        if ($locationLine) {
+            $detailRows[] = ['label' => 'Studio Location', 'value' => $locationLine];
+        }
         if ($honoree) {
-            $detailRows[] = ['label' => 'Celebration for', 'value' => $honoree];
+            $detailRows[] = ['label' => 'Guest of Honor', 'value' => $honoree];
         }
         if ($occasion) {
             $detailRows[] = ['label' => 'Occasion', 'value' => $occasion];
@@ -249,19 +252,16 @@ class GuestController extends Controller
             $detailRows[] = ['label' => 'Date', 'value' => $date];
         }
         if ($time) {
-            $detailRows[] = ['label' => 'Start time', 'value' => $time];
+            $detailRows[] = ['label' => 'Start Time', 'value' => $time];
         }
         if ($endTime) {
-            $detailRows[] = ['label' => 'End time', 'value' => $endTime];
-        }
-        if ($locationLine) {
-            $detailRows[] = ['label' => 'Studio location', 'value' => $locationLine];
+            $detailRows[] = ['label' => 'End Time', 'value' => $endTime];
         }
         if ($hostName) {
-            $detailRows[] = ['label' => 'RSVP name', 'value' => $hostName];
+            $detailRows[] = ['label' => 'RSVP Name', 'value' => $hostName];
         }
         if ($hostContact) {
-            $detailRows[] = ['label' => 'RSVP phone', 'value' => $hostContact];
+            $detailRows[] = ['label' => 'RSVP Phone', 'value' => $hostContact];
         }
 
         $subject = 'Honest Art studio invitation';
