@@ -34,7 +34,16 @@ class AdminClientController extends Controller
         }
 
         if ($q = $request->query('q')) {
-            $query->where('email', 'like', '%' . $q . '%');
+            $query->where(function ($sub) use ($q) {
+                $sub->where('email', 'like', '%' . $q . '%')
+                    ->orWhere('name', 'like', '%' . $q . '%');
+            });
+        }
+
+        if ($locationId = $request->query('location_id')) {
+            $query->whereHas('invitations', function ($q) use ($locationId) {
+                $q->where('location_id', $locationId);
+            });
         }
 
         if ($dateFrom = $request->query('date_from')) {
@@ -49,9 +58,13 @@ class AdminClientController extends Controller
         $paginated = $query->paginate($perPage);
 
         $items = $paginated->getCollection()->map(function ($user) {
+            $latestInv = $user->invitations()->with('location:id,name')->orderBy('id', 'desc')->first();
             return [
                 'id' => $user->id,
+                'name' => $user->name,
                 'email' => $user->email,
+                'phone' => $latestInv->host_contact ?? null,
+                'location_name' => $latestInv && $latestInv->location ? $latestInv->location->name : null,
                 'invitations_count' => $user->invitations_count,
                 'created_at' => $user->created_at ? $user->created_at->toDateTimeString() : null,
             ];

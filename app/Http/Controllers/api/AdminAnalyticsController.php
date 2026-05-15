@@ -105,7 +105,7 @@ class AdminAnalyticsController extends Controller
             ->orderBy('invitation_count', 'desc')
             ->get();
 
-        $recentInvitations = Invitation::with(['user', 'location'])
+        $recentInvitations = Invitation::with(['user', 'location'])->withCount('guests')
             ->when($adminUser && (int) $adminUser->role_id === 2 && $adminUser->location_id, function ($query) use ($adminUser) {
                 $query->where('location_id', $adminUser->location_id);
             })
