@@ -9,6 +9,7 @@ use App\Http\Controllers\api\HealthController;
 use App\Http\Controllers\api\InvitationController;
 use App\Http\Controllers\api\LocationController;
 use App\Http\Controllers\api\AdminAnalyticsController;
+use App\Http\Controllers\api\AdminGuestController;
 use App\Http\Controllers\api\AdminMailSettingsController;
 use App\Http\Controllers\api\AdminPasswordResetController;
 use App\Http\Controllers\api\EmailWebhookController;
@@ -140,6 +141,8 @@ Route::middleware(['api.admin:1,2,3'])->group(function () {
     // Admin clients (regular users, read-only)
     Route::get('/admin/clients', [AdminClientController::class, 'index']);
     Route::get('/admin/clients/{id}', [AdminClientController::class, 'show']);
+    // Admin guests (all guest emails across invitations)
+    Route::get('/admin/guests', [AdminGuestController::class, 'index']);
     Route::get('/admin/settings/mail', [AdminMailSettingsController::class, 'show']);
 });
 
